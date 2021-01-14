@@ -1,3 +1,5 @@
+*Note:- This is a modified version of Signal Server source code. (https://github.com/signalapp/Signal-Server)*
+
 Signal-Server
 =================
 
