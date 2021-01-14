@@ -1,0 +1,185 @@
+version: '2'
+
+services:
+  minio:
+    image: minio/minio
+    container_name: minio
+    ports:
+      - 9000:9000
+    environment:
+      - MINIO_ACCESS_KEY=S7H6VDB7U0QUC23BH890H
+      - MINIO_SECRET_KEY=suf+tfghSlUdfgyrbc8hr5WEkigbhZa1kkTG3FHB
+      - MINIO_REGION=us-east-1
+      - MINIO_DOMAIN=localhost
+    command: server /export
+    volumes:
+      - ./config:/root/.minio
+      - ./data:/data
+    networks:
+      - bridge
+
+  mc:
+    image: minio/mc
+    depends_on:
+      - minio
+    container_name: mc
+    environment:
+      - MINIO_ACCESS_KEY=S7H6VDB7U0QUC23BH890H
+      - MINIO_SECRET_KEY=suf+tfghSlUdfgyrbc8hr5WEkigbhZa1kkTG3FHB
+    entrypoint: >
+      /bin/sh -c "
+      until (/usr/bin/mc config host add s3 http://192.168.207.128:9000 $${MINIO_ACCESS_KEY} $${MINIO_SECRET_KEY}) do echo '...waiting...' && sleep 1; done;
+      /usr/bin/mc mb s3/signalbucket --region us-east-1;
+      /usr/bin/mc policy set public s3/signalbucket;
+      exit 0;
+      "
+    networks:
+      - bridge
+
+  localstack:
+    container_name: "localstack"
+    image: localstack/localstack
+    hostname: localstack
+    networks:
+      - bridge
+    ports:
+      - "4566-4599:4566-4599" 
+      - "8080:8080"
+    environment:
+      - SERVICES=s3,sqs,lambda,cloudformation,sts,iam,cloudwatch,apigateway,events
+      - DEBUG=1
+      - DATA_DIR=/tmp/localstack/data
+      - PORT_WEB_UI=8080
+      - LAMBDA_EXECUTOR=docker-reuse
+      - LAMBDA_REMOTE_DOCKER=false
+      - LAMBDA_REMOVE_CONTAINERS=true
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - HOST_TMP_FOLDER=/tmp/
+    volumes:
+      - ./data:/tmp/localstack
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - ./bin:/docker-entrypoint-initaws.d
+
+  scope:
+    image: weaveworks/scope:1.13.1
+    network_mode: "host"
+    pid: "host"
+    privileged: true
+    labels:
+      - "works.weave.role=system"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:rw"
+    command:
+      - '--probe.docker=true'
+      
+  
+  signal_account_database:
+    image:          postgres:11
+    container_name: postgres_account_database
+    restart:        always
+    environment:
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB:       signal
+      PGDATA:            /var/lib/postgresql/data/pgdata
+    ports:
+      - '5431:5432'
+    volumes:
+      - ./postgres_database:/var/lib/postgresql/data
+  signal_keys_database:
+    image:          postgres:11
+    container_name: postgres_keys_database
+    restart:        always
+    environment:
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB:       signal
+      PGDATA:            /var/lib/postgresql/data/pgdata
+    ports:
+      - '5432:5432'
+    volumes:
+      - ./postgres_keys_database:/var/lib/postgresql/data
+  signal_message_database:
+    image:          postgres:11
+    container_name: postgres_message_database
+    restart:        always
+    environment:
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB:       signal
+      PGDATA:            /var/lib/postgresql/data/pgdata
+    ports:
+      - '5433:5432'
+    volumes:
+      - ./postgres_message_store:/var/lib/postgresql/data
+  signal_abuse_database:
+    image:          postgres:11
+    container_name: postgres_abuse_database
+    restart:        always
+    environment:
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB:       signal
+      PGDATA:            /var/lib/postgresql/data/pgdata
+    ports:
+      - '5434:5432'
+    volumes:
+      - ./postgres_abuse_database:/var/lib/postgresql/data
+  redis_main:
+    image: redis:5
+    container_name: redis_main
+    restart: always
+    ports:
+      - '6379:6379'
+    volumes:
+      - ./redis_main:/data
+  redis_replication:
+    image: redis:5
+    container_name: redis_replication
+    restart: always
+    command: redis-server --port 6380
+    ports:
+      - '6380:6380'
+    volumes:
+      - ./redis_replication:/data
+  
+  # Remove linse below if you don't want PostgresDB management GUI
+  signal_adminer:
+    container_name: signal_adminer
+    image:          adminer:latest
+    ports: 
+      - 8000:8080
+    links: 
+      - signal_account_database
+      - signal_keys_database
+      - signal_message_database
+      - signal_abuse_database
+    environment: 
+      ADMINER_DESIGN: nette
+    networks:
+      - default
+      
+  # Remove linse below if you don't want Redis management GUI
+  redis_commander:
+    container_name: redis_commander
+    image:          rediscommander/redis-commander:latest
+    hostname: redis-commander
+    ports: 
+      - 8001:8081
+    links: 
+      - redis_main
+      - redis_replication
+    environment: 
+      - REDIS_HOSTS=main:redis_main:6379, replica:redis_replication:6380
+
+
+networks:
+  bridge:
+  
+  
+  
+  
+  
+  
+  
+  
